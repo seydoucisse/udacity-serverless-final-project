@@ -10,8 +10,8 @@ plugins:
 
 provider:
   name: aws
-  runtime: nodejs12.x
-  lambdaHashingVersion: '20201221'
+  deploymentMethod: direct
+  runtime: nodejs16.x
 
   stage: ${opt:stage, 'dev'}
   region: ${opt:region, 'us-east-1'}
@@ -25,12 +25,13 @@ provider:
   environment:
     TODOS_TABLE: Todos-${self:provider.stage}
     TODOS_CREATED_AT_INDEX: CreatedAtIndex
-    ATTACHMENT_S3_BUCKET: serverless-c4-todo-images-${self:provider.stage}
+    ATTACHMENT_S3_BUCKET: 693348337916-serverless-c4-todo-images-${self:provider.stage}
     SIGNED_URL_EXPIRATION: 300
 
   logs:
-    # Enable API Gateway logs
-    restApi: true
+    restApi:
+      accessLogging: true
+      executionLogging: true
 
   iam:
     role:
@@ -56,7 +57,8 @@ functions:
           method: get
           path: todos
           cors: true
-          authorizer: Auth
+          authorizer: 
+            name: Auth
     iamRoleStatementsInherit: true
     iamRoleStatements:
       - Effect: Allow
@@ -75,7 +77,8 @@ functions:
           method: post
           path: todos
           cors: true
-          authorizer: Auth
+          authorizer: 
+            name: Auth
           request:
             schemas:
               application/json: ${file(models/create-todo-model.json)}
@@ -95,7 +98,8 @@ functions:
           method: patch
           path: todos/{todoId}
           cors: true
-          authorizer: Auth
+          authorizer: 
+            name: Auth
           request:
             schemas:
               application/json: ${file(models/update-todo-model.json)}
@@ -115,7 +119,8 @@ functions:
           method: delete
           path: todos/{todoId}
           cors: true
-          authorizer: Auth
+          authorizer: 
+            name: Auth
     iamRoleStatementsInherit: true
     iamRoleStatements:
       - Effect: Allow
@@ -132,13 +137,18 @@ functions:
           method: post
           path: todos/{todoId}/attachment
           cors: true
-          authorizer: Auth
+          authorizer: 
+            name: Auth
     iamRoleStatementsInherit: true
     iamRoleStatements:
       - Effect: Allow
         Action:
           - s3:PutObject
         Resource: !GetAtt AttachmentsBucket.Arn
+      - Effect: Allow
+        Action: 
+          - dynamodb:UpdateItem
+        Resource: !GetAtt TodosTable.Arn
 
 resources:
   Resources:
@@ -150,7 +160,8 @@ resources:
       Properties:
         ResponseParameters:
           gatewayresponse.header.Access-Control-Allow-Origin: "'*'"
-          gatewayresponse.header.Access-Control-Allow-Methods: "'GET,POST,PUT,PATCH,OPTIONS'"
+          gatewayresponse.header.Access-Control-Allow-Methods: "'GET,POST,OPTIONS'"
+          gatewayresponse.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
         ResponseType: DEFAULT_4XX
         RestApiId:
           Ref: ApiGatewayRestApi
@@ -193,9 +204,9 @@ resources:
         CorsConfiguration:
           CorsRules:
             - AllowedOrigins:
-                - "*"
+                - '*'
               AllowedHeaders:
-                - "*"
+                - '*'
               AllowedMethods:
                 - "GET"
                 - "POST"
@@ -211,16 +222,13 @@ resources:
       Properties:
         Bucket: !Ref AttachmentsBucket
         PolicyDocument:
-          Id: S3Policy
-          Version: 2012-10-17
+          Id: MyS3BucketPolicy
+          Version: "2012-10-17"
           Statement:
             - Sid: ReadBucketPolicy
               Effect: Allow
               Principal: "*"
               Action:
                 - "s3:GetObject"
-              Resource: !Join 
-                - ""
-                - "arn:aws:s3:::"
-                - !Ref AttachmentsBucket
-                - "/*"
+                - "s3:PutObject"
+              Resource: "arn:aws:s3:::${self:provider.environment.ATTACHMENT_S3_BUCKET}/*"
